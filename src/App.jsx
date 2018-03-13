@@ -12,20 +12,27 @@ export default class App extends React.Component {
     state = {mode: "load"}
 
     componentDidMount() {
-        console.log (`displaying power bi group/report ${this.props.group}`)
-        this.getPBIServiceToken().then(auth => {
-            
-            this.listReports(auth, this.props.group).then(reports => {
-                this.setState({auth: auth, reports: reports.value, mode: "list"})
+        let group = this.props.POWERBIWORKSPACE,
+            tokenurl = this.props.TOKENURL
+
+        if (group && tokenurl) {
+            console.log (`displaying power bi group/report ${group}`)
+            this.getPBIServiceToken(tokenurl).then(auth => {
+                
+                this.listReports(auth, group).then(reports => {
+                    this.setState({mode: "list", auth: auth, group: group, reports: reports.value})
+                })
+            }, err => {
+                this.setState({mode: "error", error: err})
             })
-        }, err => {
-            this.setState({error: err})
-        })
+        } else {
+            this.setState({mode: "error", error: `Application requires REACT_APP_TOKEN_URL ${tokenurl} & REACT_APP_POWERBI_WORKSPACE ${group} to be set, see youre developer`})
+        }
     }
 
-    getPBIServiceToken() {
+    getPBIServiceToken(tokenurl) {
         return new Promise((accept, reject) => { 
-            fetch ('https://pbiauth.azurewebsites.net/api/gettoken?code=uLBgNuUCmyKd5Czy4iZzRz/CMnZIXOAeXQLj3wTcZewGgcQR1ipbhw==',
+            fetch (tokenurl,
                     {headers : { 
                         "Authorization": `Bearer ${this.props.auth.getTokenResponseParam("id_token")}`
                     }
@@ -152,7 +159,7 @@ export default class App extends React.Component {
                             { this.state.reports.map(r =>
                                 <tr>
                                     <td><h2>{r.name}</h2></td>
-                                    <td><button style={{"marginLeft": "15px"}} onClick={this.displayReport.bind(this, this.state.auth, this.props.group, r)}>open</button></td>
+                                    <td><button style={{"marginLeft": "15px"}} onClick={this.displayReport.bind(this, this.state.auth, this.state.group, r)}>open</button></td>
                                 </tr>
                             )}
 

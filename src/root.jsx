@@ -18,11 +18,9 @@ export class Root extends React.Component {
         const { isLoggedIn, error } = this.state;
         return (
             <div>
-
-            
                 {isLoggedIn && 
                     <div>
-                        <App auth={auth} group="6a29f8ce-2d64-444c-90a0-0af82c0e330c" report="cdb5d336-726f-4ce1-8925-6c979fb50ce5" forceLogin={this.forceLogin} />
+                        <App auth={auth} POWERBIWORKSPACE={process.env.REACT_APP_POWERBI_WORKSPACE} TOKENURL={process.env.REACT_APP_TOKEN_URL}  forceLogin={this.forceLogin} />
                     </div>        
                 }
                 {!isLoggedIn &&
