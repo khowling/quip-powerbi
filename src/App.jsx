@@ -1,5 +1,6 @@
 import Styles from "./App.less";
 import  { service, factories, IEmbedConfiguration, Embed }  from 'powerbi-client';
+import quip from "quip";
 import * as models from 'powerbi-models'
 
 export default class App extends React.Component {
@@ -13,36 +14,50 @@ export default class App extends React.Component {
 
     componentDidMount() {
         let group = this.props.POWERBIWORKSPACE,
-            tokenurl = this.props.TOKENURL
+            tokenurl = this.props.TOKENURL,
+            bearer = this.props.auth.getTokenResponseParam("id_token") // this.props.auth.getTokenResponseParam("access_token")
 
         if (group && tokenurl) {
             console.log (`displaying power bi group/report ${group}`)
-            this.getPBIServiceToken(tokenurl).then(auth => {
-                
-                this.listReports(auth, group).then(reports => {
-                    this.setState({mode: "list", auth: auth, group: group, reports: reports.value})
-                })
+            this.getPBIServiceToken(tokenurl, bearer).then(auth => {
+                let record = quip.apps.getRootRecord();
+                if (record.get("gotreport")) {
+                    this.displayReport(auth, group, record.getData())
+                } else {
+                    this.listReports(auth, group).then(reports => {
+                        this.setState({mode: "list", auth: auth, group: group, reports: reports.value})
+                    })
+                }
             }, err => {
                 this.setState({mode: "error", error: err})
             })
         } else {
-            this.setState({mode: "error", error: `Application requires REACT_APP_TOKEN_URL ${tokenurl} & REACT_APP_POWERBI_WORKSPACE ${group} to be set, see youre developer`})
+            this.setState({mode: "error", error: `Application requires REACT_APP_TOKEN_URL ${tokenurl} & REACT_APP_POWERBI_WORKSPACE ${group} to be set, see youre developer ${JSON.stringify(Object.keys(process.env))}`})
         }
     }
 
-    getPBIServiceToken(tokenurl) {
+    getPBIServiceToken(tokenurl, bearer, tryrefresh = true) {
         return new Promise((accept, reject) => { 
-            fetch (tokenurl,
-                    {headers : { 
-                        "Authorization": `Bearer ${this.props.auth.getTokenResponseParam("id_token")}`
-                    }
-            }).then (response => {
-                if (response.status !== 200) {
-                    reject('Looks like there was a problem getting the token. Status Code: ' + response.status);
+            fetch (tokenurl,{
+                headers : { 
+                    "Authorization": `Bearer ${bearer}`
                 }
-                response.json().then((auth) => {
-                    accept(auth)
-                }, err => reject('Looks like there was a problem getting the powerbi token. Status Code: ' + err))
+            }).then (response => {
+                if (response.status === 401 && tryrefresh) {
+                    console.log ('trying refesh')
+                    this.props.auth.refreshToken().then(
+                        refresh => {
+                            //console.log (`got refesh ${JSON.stringify(refresh)}`)
+                            this.getPBIServiceToken(tokenurl, refresh.access_token, false).then(auth => accept(auth), err => reject (err))
+                        }, err => reject (`failed to refresh token ${err}`)
+                    )
+                } else if (response.status !== 200) {
+                    reject('Looks like there was a problem getting the token. Status Code: ' + response.status);
+                } else {
+                    response.json().then((auth) => {
+                        accept(auth)
+                    }, err => reject('Looks like there was a problem getting the powerbi token. Status Code: ' + err))
+                }
             }, err => reject('Looks like there was a problem getting the powerbi token. Status Code: ' + err))
         })
     }
@@ -58,7 +73,7 @@ export default class App extends React.Component {
             //     reject({code: res, message: "failted"})
             // } else {
                     res.json().then(body => {
-                        console.log (`body : ${JSON.stringify(body)}`)
+                        //console.log (`body : ${JSON.stringify(body)}`)
                         if (!body.error) {
                             accept(body)
                         } else {
@@ -74,7 +89,7 @@ export default class App extends React.Component {
 
     generateEmbedToken (auth, group, report)  {
         return new Promise((accept, reject) => {
-          console.log (`generateEmbedToken: ${JSON.stringify(auth)}  : ${group} : ${report}`)
+          //console.log (`generateEmbedToken: ${JSON.stringify(auth)}  : ${group} : ${report}`)
           let	embedtoken_body = JSON.stringify({"accessLevel": "View" })
 
           fetch(`https://api.powerbi.com/v1.0/myorg/groups/${group}/reports/${report}/GenerateToken`,
@@ -87,12 +102,12 @@ export default class App extends React.Component {
                method: 'POST', // or 'PUT'
                body: embedtoken_body
             }).then(res => {
-                console.log (`generateEmbedToken GenerateToken response: ${res.statusCode}`)
+                //console.log (`generateEmbedToken GenerateToken response: ${res.statusCode}`)
                // if(!(res.statusCode === 200 || res.statusCode === 201)) {
                //     reject({code: res, message: "failted"})
                // } else {
                     res.json().then(body => {
-                        console.log (`body : ${JSON.stringify(body)}`)
+                        //console.log (`body : ${JSON.stringify(body)}`)
                         if (!body.error) {
                             accept(body)
                         } else {
@@ -104,28 +119,64 @@ export default class App extends React.Component {
       })
     }
 
+    setReport (report, type) {
+        let record = quip.apps.getRootRecord();
+        record.set("gotreport", true)
+        record.set("id", report.id)
+        record.set("name", report.name)
+        record.set("webUrl", report.webUrl)
+        record.set("embedUrl", report.embedUrl)
+        record.set("datasetId", report.datasetId)
+        record.set("type", type)
+
+        quip.apps.sendMessage(`Selected Report ${report.name}`)
+        this.displayReport (this.state.auth, this.state.group, quip.apps.getRootRecord().getData())
+    }
+
     displayReport (auth, group, report) {
         this.generateEmbedToken(auth, group, report.id).then (etoken => {
-            console.log (`got embed token ${etoken.token}`)
-
+            //console.log (`got embed token ${etoken.token}`)
             //quip.apps.registerEmbeddedIframe()
             let powerBiService = new service.Service(
                 factories.hpmFactory,
                 factories.wpmpFactory,
                 factories.routerFactory);
 
-            powerBiService.embed(this.pbicontent, {
-                type: 'report',
-                accessToken: etoken.token,
-                tokenType: models.TokenType.Embed, //Aad
-                embedUrl: `https://msit.powerbi.com/reportEmbed?reportId=${report.id}&amp;groupId=${group}`,
-                permissions: models.Permissions.All,
-                settings: {
+            if (report.type === "qna") {
+                powerBiService.embed(this.pbicontent, {
+                    type: 'qna',
+                    accessToken: etoken.token,
+                    tokenType: models.TokenType.Embed, //Aad
+                    embedUrl: `https://msit.powerbi.com/qnaEmbed?groupId=${group}`,
+                    datasetIds: [report.datasetId],
+                    viewMode:  0 // interactive
+                })
+                
+            } else if (report.type === "report") {
+
+                console.log ('embed report')
+                let settings = {
                     filterPaneEnabled: false,
-                    navContentPaneEnabled: false
+                    navContentPaneEnabled: false,
+                    layoutType: models.LayoutType.Master
                 }
-            })
-            this.setState({mode: "display", report: report.name })
+
+                if (quip.apps.isMobile()) {
+                    console.log ('mobile layout')
+                    settings.layoutType = models.LayoutType.MobilePortrait
+                }
+
+                powerBiService.embed(this.pbicontent, {
+                    type: 'report',
+                    accessToken: etoken.token,
+                    tokenType: models.TokenType.Embed, //Aad
+                    embedUrl: report.embedUrl,
+                    permissions: models.Permissions.All,
+                    settings: settings
+                })
+            }
+
+            this.setState({mode: "display", report: `${report.type}: ${report.name}` })
         }, err => {
             this.setState({error: 'Looks like there was a problem getting the embed token. Status Code: ' + JSON.stringify(err)})
         })
@@ -153,13 +204,19 @@ export default class App extends React.Component {
                             <tr>
                             <th scope="col"></th>
                             <th scope="col"></th>
+                            <th scope="col"></th>
                             </tr>
                         </thead>
                         <tbody>
                             { this.state.reports.map(r =>
                                 <tr>
                                     <td><h2>{r.name}</h2></td>
-                                    <td><button style={{"marginLeft": "15px"}} onClick={this.displayReport.bind(this, this.state.auth, this.state.group, r)}>open</button></td>
+                                    <td>
+                                        <quip.apps.ui.Button text="report"  onClick={this.setReport.bind(this, r, "report")}/>
+                                    </td>
+                                    <td>
+                                        <quip.apps.ui.Button text="qna"  onClick={this.setReport.bind(this,  r, "qna")}/>
+                                    </td>
                                 </tr>
                             )}
 

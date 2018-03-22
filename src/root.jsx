@@ -20,7 +20,7 @@ export class Root extends React.Component {
             <div>
                 {isLoggedIn && 
                     <div>
-                        <App auth={auth} POWERBIWORKSPACE={process.env.REACT_APP_POWERBI_WORKSPACE} TOKENURL={process.env.REACT_APP_TOKEN_URL}  forceLogin={this.forceLogin} />
+                        <App auth={auth} POWERBIWORKSPACE="<workspaceid>" TOKENURL="<token endpoint>"  forceLogin={this.forceLogin} />
                     </div>        
                 }
                 {!isLoggedIn &&
@@ -81,8 +81,28 @@ export class Root extends React.Component {
     };
 }
 
+class BPIReport extends quip.apps.RootRecord {
+    static getProperties() {
+        return {
+            gotreport: "boolean",
+            id: "string",
+            name: "string",
+            webUrl: "string",
+            embedUrl: "string",
+            datasetId: "string",
+            type: "string"
+        };
+    }
+}
+quip.apps.registerClass(BPIReport, "root");
+
 quip.apps.initialize({
-    initializationCallback: function(rootNode) {
+    initializationCallback: function(rootNode, { isCreation }) {
+
+        let rootRecord = quip.apps.getRootRecord();
+        if (isCreation) {
+            rootRecord.set("gotreport", false);
+        }
         ReactDOM.render(<Root auth={quip.apps.auth("EmbedDashboard")}/>, rootNode);
     },
 });
