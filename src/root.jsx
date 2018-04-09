@@ -20,7 +20,7 @@ export class Root extends React.Component {
             <div>
                 {isLoggedIn && 
                     <div>
-                        <App auth={auth} POWERBIWORKSPACE="<workspaceid>" TOKENURL="<token endpoint>"  forceLogin={this.forceLogin} />
+                        <App auth={auth} POWERBIWORKSPACE="<powerbi workspace id>"  forceLogin={this.forceLogin} />
                     </div>        
                 }
                 {!isLoggedIn &&
@@ -57,8 +57,8 @@ export class Root extends React.Component {
         console.log ('login called')
         this.props.auth
             .login({
-                //"resource": "https://analysis.windows.net/powerbi/api",
-                //"prompt": "consent"
+                "resource": "https://analysis.windows.net/powerbi/api",
+                "prompt": "consent"
             })
             .then(
                 () => {
@@ -103,6 +103,6 @@ quip.apps.initialize({
         if (isCreation) {
             rootRecord.set("gotreport", false);
         }
-        ReactDOM.render(<Root auth={quip.apps.auth("EmbedDashboard")}/>, rootNode);
+        ReactDOM.render(<Root auth={quip.apps.auth("PBI")}/>, rootNode);
     },
 });

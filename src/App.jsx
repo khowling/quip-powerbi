@@ -14,28 +14,30 @@ export default class App extends React.Component {
 
     componentDidMount() {
         let group = this.props.POWERBIWORKSPACE,
-            tokenurl = this.props.TOKENURL,
-            bearer = this.props.auth.getTokenResponseParam("id_token") // this.props.auth.getTokenResponseParam("access_token")
+            //tokenurl = this.props.TOKENURL,
+            //bearer = this.props.auth.getTokenResponseParam("id_token"),
+            auth = {access_token : this.props.auth.getTokenResponseParam("access_token")}
 
-        if (group && tokenurl) {
+        if (group) {
             console.log (`displaying power bi group/report ${group}`)
-            this.getPBIServiceToken(tokenurl, bearer).then(auth => {
+            //this.getPBIServiceToken(tokenurl, bearer).then(auth => {
                 let record = quip.apps.getRootRecord();
                 if (record.get("gotreport")) {
                     this.displayReport(auth, group, record.getData())
                 } else {
-                    this.listReports(auth, group).then(reports => {
+                    this.listReports(auth, group).then((auth, reports) => {
                         this.setState({mode: "list", auth: auth, group: group, reports: reports.value})
-                    })
+                    }, err => this.setState({mode: "error", error: JSON.stringify(err)}))
                 }
-            }, err => {
-                this.setState({mode: "error", error: err})
-            })
+            //}, err => {
+            //    this.setState({mode: "error", error: err})
+            //})
         } else {
-            this.setState({mode: "error", error: `Application requires REACT_APP_TOKEN_URL ${tokenurl} & REACT_APP_POWERBI_WORKSPACE ${group} to be set, see youre developer ${JSON.stringify(Object.keys(process.env))}`})
+            this.setState({mode: "error", error: `Application requires POWERBIWORKSPACE prop to be set, see youre developer`})
         }
     }
 
+    /* only used if you are storing a central powerbi access_token from a single powerbi pro user in Azure Keyvault*/
     getPBIServiceToken(tokenurl, bearer, tryrefresh = true) {
         return new Promise((accept, reject) => { 
             fetch (tokenurl,{
@@ -62,25 +64,33 @@ export default class App extends React.Component {
         })
     }
 
-    listReports(auth, group) {
+    listReports(auth, group, tryrefresh = true) {
         return new Promise((accept, reject) => {
             fetch (`https://api.powerbi.com/v1.0/myorg/groups/${group}/reports`,{
                 headers: new Headers({
                 "Authorization": `Bearer ${auth.access_token}`
             })}).then(res => {
-                console.log (`listReports  response: ${res.statusCode} `)
-            // if(!(res.statusCode === 200 || res.statusCode === 201)) {
-            //     reject({code: res, message: "failted"})
-            // } else {
+                console.log (`listReports  response: ${res.status} `)
+                if (res.status === 403) {
+                    console.log ('listReports - trying refesh')
+                    this.props.auth.refreshToken().then(
+                        refresh => {
+                            //console.log (`got refesh ${JSON.stringify(refresh)}`)
+                            this.listReports(refresh, group, false).then((auth, body) => accept(auth, body), err => reject (err))
+                        }, err => reject (`failed to refresh token ${err}`)
+                    )
+                } else if(!(res.status === 200 || res.status === 201)) {
+                    reject({code: res.status, message: "listReports: got error retunred from powerbi api"})
+                } else {
                     res.json().then(body => {
                         //console.log (`body : ${JSON.stringify(body)}`)
                         if (!body.error) {
-                            accept(body)
+                            accept(auth, body)
                         } else {
                             reject({code: "Cannot generate embed token", message: JSON.stringify(body.error)})
                         }
                     }, err => reject({code: "error generate embed token response not json", message: err}))
-            // }
+                }
             }, err => reject({code: "error, failed to generate embed token", message: err}))
         })
     }
