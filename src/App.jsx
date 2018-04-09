@@ -45,7 +45,7 @@ export default class App extends React.Component {
                     "Authorization": `Bearer ${bearer}`
                 }
             }).then (response => {
-                if (response.status === 401 && tryrefresh) {
+                if ((res.status === 403 || res.status === 401) && tryrefresh) {
                     console.log ('trying refesh')
                     this.props.auth.refreshToken().then(
                         refresh => {
@@ -71,7 +71,7 @@ export default class App extends React.Component {
                 "Authorization": `Bearer ${auth.access_token}`
             })}).then(res => {
                 console.log (`listReports  response: ${res.status} `)
-                if (res.status === 403) {
+                if ((res.status === 403 || res.status === 401) && tryrefresh) {
                     console.log ('listReports - trying refesh')
                     this.props.auth.refreshToken().then(
                         refresh => {
@@ -97,7 +97,7 @@ export default class App extends React.Component {
  
 
 
-    generateEmbedToken (auth, group, report)  {
+    generateEmbedToken (auth, group, report, tryrefresh = true)  {
         return new Promise((accept, reject) => {
           //console.log (`generateEmbedToken: ${JSON.stringify(auth)}  : ${group} : ${report}`)
           let	embedtoken_body = JSON.stringify({"accessLevel": "View" })
@@ -112,10 +112,18 @@ export default class App extends React.Component {
                method: 'POST', // or 'PUT'
                body: embedtoken_body
             }).then(res => {
-                //console.log (`generateEmbedToken GenerateToken response: ${res.statusCode}`)
-               // if(!(res.statusCode === 200 || res.statusCode === 201)) {
-               //     reject({code: res, message: "failted"})
-               // } else {
+                console.log (`generateEmbedToken  response: ${res.status} `)
+                if ((res.status === 403 || res.status === 401) && tryrefresh) {
+                    console.log ('generateEmbedToken - trying refesh')
+                    this.props.auth.refreshToken().then(
+                        refresh => {
+                            //console.log (`got refesh ${JSON.stringify(refresh)}`)
+                            this.generateEmbedToken(refresh, group, report, false).then(body => accept(body), err => reject (err))
+                        }, err => reject (`failed to refresh token ${err}`)
+                    )
+                } else if(!(res.status === 200 || res.status === 201)) {
+                    reject({code: res.status, message: "generateEmbedToken: got error retunred from powerbi api"})
+                } else {
                     res.json().then(body => {
                         //console.log (`body : ${JSON.stringify(body)}`)
                         if (!body.error) {
@@ -124,7 +132,7 @@ export default class App extends React.Component {
                             reject({code: "Cannot generate embed token", message: JSON.stringify(body.error)})
                         }
                     }, err => reject({code: "error generate embed token response not json", message: err}))
-               // }
+                }
             }, err => reject({code: "error, failed to generate embed token", message: err}))
       })
     }
@@ -188,7 +196,7 @@ export default class App extends React.Component {
 
             this.setState({mode: "display", report: `${report.type}: ${report.name}` })
         }, err => {
-            this.setState({error: 'Looks like there was a problem getting the embed token. Status Code: ' + JSON.stringify(err)})
+            this.setState({mode: "error", error: 'Looks like there was a problem getting the embed token. Status Code: ' + JSON.stringify(err)})
         })
     }
 
